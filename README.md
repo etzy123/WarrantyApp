@@ -1,4 +1,4 @@
-# Fairway Route — deploy guide
+# Bisque Golf Warranty Claims — deploy guide
 
 A small Node/Express app: customer-facing warranty form, an internal ops
 dashboard, a Postgres-backed claims queue, live Shopify order lookup, and
@@ -33,7 +33,7 @@ Resend for the actual emails.
    - `SHOPIFY_API_KEY` / `SHOPIFY_API_SECRET` — from the Dev Dashboard app's
      API credentials page.
    - `RESEND_API_KEY` — from Resend.
-   - `EMAIL_FROM` — start with `Fairway Route <onboarding@resend.dev>` until
+   - `EMAIL_FROM` — start with `Bisque Golf Warranty Claims <onboarding@resend.dev>` until
      your sending domain is verified.
    - `INTERNAL_NOTIFY_EMAIL` — where in-house and flagged-claim alerts go.
    - `OPS_USERNAME` / `OPS_PASSWORD` — protects `/ops.html` and its API.
