@@ -1,4 +1,4 @@
-// One-time OAuth install flow for the custom "Fairway Route" app created in
+// One-time OAuth install flow for the custom "WarrantyApp" app created in
 // Shopify's Dev Dashboard. Dev Dashboard apps (unlike the old legacy custom
 // app screen) don't hand you a static access token to copy — they issue one
 // only via the standard OAuth authorization-code flow. This module runs
@@ -11,6 +11,7 @@
 const crypto = require("crypto");
 const express = require("express");
 const { pool } = require("./db");
+const { asyncHandler } = require("./asyncHandler");
 
 const router = express.Router();
 
@@ -43,7 +44,7 @@ function verifyHmac(query) {
 // Step 1: GET /auth/shopify?shop=your-store.myshopify.com
 // Visit this once (as the store owner, logged into Shopify admin) to kick
 // off installation.
-router.get("/auth/shopify", async (req, res) => {
+router.get("/auth/shopify", asyncHandler(async (req, res) => {
   if (!API_KEY || !API_SECRET || !APP_URL) {
     return res.status(503).send(
       "Set SHOPIFY_API_KEY, SHOPIFY_API_SECRET, and APP_URL in Railway's Variables tab first."
@@ -67,10 +68,10 @@ router.get("/auth/shopify", async (req, res) => {
     `&state=${encodeURIComponent(state)}`;
 
   res.redirect(authorizeUrl);
-});
+}));
 
 // Step 2: Shopify redirects here after the merchant approves the scopes.
-router.get("/auth/shopify/callback", async (req, res) => {
+router.get("/auth/shopify/callback", asyncHandler(async (req, res) => {
   const { shop, code, state } = req.query;
 
   if (!isValidShopDomain(shop)) return res.status(400).send("Invalid shop.");
@@ -103,11 +104,11 @@ router.get("/auth/shopify/callback", async (req, res) => {
 
   res.send(
     `<body style="font-family:sans-serif;padding:40px;max-width:520px;margin:0 auto;">` +
-      `<h2>Fairway Route is connected to ${shop}</h2>` +
+      `<h2>Bisque Golf Warranty Claims is connected to ${shop}</h2>` +
       `<p>The access token was saved. Order lookup is live — you can close this tab.</p>` +
       `</body>`
   );
-});
+}));
 
 // Used by shopify.js to fetch whichever shop's token was installed most
 // recently. Fine for a single-store setup; if this ever serves multiple

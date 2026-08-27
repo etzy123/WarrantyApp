@@ -3,10 +3,22 @@ const { pool } = require("./db");
 const { findOrderByNumber } = require("./shopify");
 const { notifyBrand, notifyInternalQC, notifyFlagged, notifyCustomerStatus } = require("./email");
 const { requireOpsAuth } = require("./auth");
+const { asyncHandler } = require("./asyncHandler");
+const { rateLimit } = require("./rateLimit");
 
 const router = express.Router();
 
 const STAGE_ORDER = ["submitted", "routed", "processing", "resolved"];
+
+// Order lookup requires the order's own email to match — without this,
+// anyone could enumerate order numbers and read back names/emails, which
+// is both a privacy problem and a real GDPR exposure. Rate-limited on top
+// of that so guessing email+order combinations isn't cheap.
+const orderLookupLimiter = rateLimit({ windowMs: 15 * 60 * 1000, max: 20 });
+
+function emailsMatch(a, b) {
+  return typeof a === "string" && typeof b === "string" && a.trim().toLowerCase() === b.trim().toLowerCase();
+}
 
 async function getBrand(name) {
   if (!name) return null;
@@ -24,13 +36,20 @@ function nextClaimId(seq) {
 }
 
 // ---------- public: order lookup ----------
-router.post("/order-lookup", async (req, res) => {
+router.post("/order-lookup", orderLookupLimiter, asyncHandler(async (req, res) => {
   try {
-    const { orderNumber } = req.body;
+    const { orderNumber, email } = req.body;
     if (!orderNumber) return res.status(400).json({ error: "orderNumber is required" });
+    if (!email) return res.status(400).json({ error: "email is required" });
 
     const order = await findOrderByNumber(orderNumber);
-    if (!order) return res.status(404).json({ error: "No order found with that number." });
+
+    // Same generic response whether the order doesn't exist or the email
+    // just doesn't match it — confirming "that order exists but your email
+    // is wrong" would itself leak information to someone probing numbers.
+    if (!order || !emailsMatch(order.customerEmail, email)) {
+      return res.status(404).json({ error: "We couldn't find an order with that number and email." });
+    }
 
     // Attach routing info per line item so the frontend can render the
     // "matched to X" / "in-house" / "needs manual routing" states without a
@@ -46,18 +65,18 @@ router.post("/order-lookup", async (req, res) => {
     console.error(err);
     res.status(502).json({ error: err.message });
   }
-});
+}));
 
 // ---------- public: brand directory (read-only, used by the customer form's manual fallback) ----------
-router.get("/brands", async (req, res) => {
+router.get("/brands", asyncHandler(async (req, res) => {
   const { rows } = await pool.query(
     "SELECT name, units_sold, house, contact_role, contact_email FROM brands ORDER BY units_sold DESC"
   );
   res.json(rows);
-});
+}));
 
 // ---------- public: submit a claim ----------
-router.post("/claims", async (req, res) => {
+router.post("/claims", asyncHandler(async (req, res) => {
   try {
     const { orderNumber, customerName, customerEmail, brandName, productTitle, sku, issue } = req.body;
     if (!productTitle || !issue) {
@@ -102,23 +121,23 @@ router.post("/claims", async (req, res) => {
     console.error(err);
     res.status(500).json({ error: "Could not create claim." });
   }
-});
+}));
 
 // ---------- public: poll a single claim's status (for the customer tracker) ----------
-router.get("/claims/:id", async (req, res) => {
+router.get("/claims/:id", asyncHandler(async (req, res) => {
   const { rows } = await pool.query("SELECT * FROM claims WHERE id = $1", [req.params.id]);
   if (!rows[0]) return res.status(404).json({ error: "Not found" });
   res.json(rows[0]);
-});
+}));
 
 // ---------- ops (protected): full queue ----------
-router.get("/ops/claims", requireOpsAuth, async (req, res) => {
+router.get("/ops/claims", requireOpsAuth, asyncHandler(async (req, res) => {
   const { rows } = await pool.query("SELECT * FROM claims ORDER BY created_at DESC LIMIT 200");
   res.json(rows);
-});
+}));
 
 // ---------- ops (protected): advance a claim to its next stage ----------
-router.post("/ops/claims/:id/advance", requireOpsAuth, async (req, res) => {
+router.post("/ops/claims/:id/advance", requireOpsAuth, asyncHandler(async (req, res) => {
   const { rows } = await pool.query("SELECT * FROM claims WHERE id = $1", [req.params.id]);
   const claim = rows[0];
   if (!claim) return res.status(404).json({ error: "Not found" });
@@ -137,10 +156,10 @@ router.post("/ops/claims/:id/advance", requireOpsAuth, async (req, res) => {
   }
 
   res.json(updated[0]);
-});
+}));
 
 // ---------- ops (protected): manually route a flagged claim to a brand ----------
-router.post("/ops/claims/:id/route", requireOpsAuth, async (req, res) => {
+router.post("/ops/claims/:id/route", requireOpsAuth, asyncHandler(async (req, res) => {
   const { brandName } = req.body;
   const brand = await getBrand(brandName);
   if (!brand) return res.status(400).json({ error: "Unknown brand" });
@@ -159,6 +178,6 @@ router.post("/ops/claims/:id/route", requireOpsAuth, async (req, res) => {
   }
 
   res.json(claim);
-});
+}));
 
 module.exports = router;

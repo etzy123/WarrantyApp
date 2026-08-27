@@ -33,7 +33,7 @@ function requireOpsAuth(req, res, next) {
     }
   }
 
-  res.set("WWW-Authenticate", 'Basic realm="Fairway Route ops"');
+  res.set("WWW-Authenticate", 'Basic realm="Bisque Golf Warranty Claims ops"');
   return res.status(401).send("Authentication required.");
 }
 

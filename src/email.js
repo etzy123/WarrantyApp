@@ -7,7 +7,7 @@ const resend = process.env.RESEND_API_KEY ? new Resend(process.env.RESEND_API_KE
 // the email you signed up to Resend with. Once bisquegolf.com is verified
 // (Resend gives you DNS records to add), switch this to something like
 // claims@bisquegolf.com.
-const FROM_ADDRESS = process.env.EMAIL_FROM || "Fairway Route <onboarding@resend.dev>";
+const FROM_ADDRESS = process.env.EMAIL_FROM || "Bisque Golf Warranty Claims <onboarding@resend.dev>";
 const INTERNAL_ADDRESS = process.env.INTERNAL_NOTIFY_EMAIL || null;
 
 async function sendEmail({ to, subject, text }) {

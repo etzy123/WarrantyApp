@@ -23,6 +23,27 @@ app.use(express.static(path.join(__dirname, "..", "public")));
 
 app.get("/healthz", (req, res) => res.json({ ok: true }));
 
+// Last-resort net: any error passed via next(err) — including from
+// asyncHandler-wrapped routes — lands here instead of crashing the process
+// or hanging the request.
+app.use((err, req, res, next) => {
+  console.error("[unhandled route error]", err);
+  if (res.headersSent) return next(err);
+  res.status(500).json({ error: "Something went wrong on our end. Please try again." });
+});
+
+// Defense in depth: Node 22 crashes the whole process on an unhandled
+// rejection by default. asyncHandler should catch everything reachable from
+// a request, but this stops anything that slips through (e.g. a rejection
+// in code not wired through Express, like a stray setTimeout/setInterval
+// callback) from taking the app down.
+process.on("unhandledRejection", (err) => {
+  console.error("[unhandledRejection]", err);
+});
+process.on("uncaughtException", (err) => {
+  console.error("[uncaughtException]", err);
+});
+
 async function start() {
   try {
     await migrate();
@@ -30,7 +51,7 @@ async function start() {
     console.error("[startup] migration failed — check DATABASE_URL:", err.message);
   }
   app.listen(PORT, () => {
-    console.log(`Fairway Route listening on port ${PORT}`);
+    console.log(`Bisque Golf Warranty Claims listening on port ${PORT}`);
   });
 }
 
