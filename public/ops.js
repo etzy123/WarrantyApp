@@ -5,6 +5,14 @@
   var brandsCache = [];
   var claimsCache = [];
 
+  // Builds a single-quoted JS string literal safe to embed inside a
+  // double-quoted HTML onclick="..." attribute (JSON.stringify() produces a
+  // double-quoted literal, which breaks that attribute the moment the value
+  // contains a space or anything else — that was the bug).
+  function jsAttr(s) {
+    return "'" + String(s).replace(/\\/g, "\\\\").replace(/'/g, "\\'") + "'";
+  }
+
   function esc(s) {
     return String(s == null ? "" : s).replace(/[&<>"']/g, function (c) {
       return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c];
@@ -54,7 +62,7 @@
           '<td class="num mono">' + Number(b.units_sold).toLocaleString() + "</td>" +
           '<td class="cell-faint">' + (b.house ? "Internal QC queue" : "External email") + "</td>" +
           "<td>" + (b.house ? '<span class="cell-faint">—</span>' : esc(b.contact_role || "—") + '<span class="cell-faint mono" style="display:block;font-size:11.5px;">' + esc(b.contact_email || "no email set") + "</span>") + "</td>" +
-          "<td>" + (b.house ? "" : '<button class="link-btn" onclick="window.__editBrand(' + JSON.stringify(b.name) + ')">Edit</button>') + "</td></tr>";
+          "<td>" + (b.house ? "" : '<button class="link-btn" onclick="window.__editBrand(' + jsAttr(b.name) + ')">Edit</button>') + "</td></tr>";
       }).join("");
     });
   }
@@ -122,9 +130,9 @@
           ? '<span class="cell-faint">Unmatched</span><span class="tag tag-flag">Flagged</span>'
           : esc(c.brand_name) + (c.routing_type === "house" ? '<span class="tag tag-house">In-house</span>' : "");
         var photosCell = c.photo_count > 0
-          ? '<button class="photo-badge" onclick="window.__viewPhotos(' + JSON.stringify(c.id) + ')">' + c.photo_count + ' photo' + (c.photo_count === 1 ? "" : "s") + '</button>'
+          ? '<button class="photo-badge" onclick="window.__viewPhotos(' + jsAttr(c.id) + ')">' + c.photo_count + ' photo' + (c.photo_count === 1 ? "" : "s") + '</button>'
           : '<span class="cell-faint">—</span>';
-        var actions = '<button class="btn btn-ghost btn-small" onclick="window.__editClaim(' + JSON.stringify(c.id) + ')">Edit</button> ';
+        var actions = '<button class="btn btn-ghost btn-small" onclick="window.__editClaim(' + jsAttr(c.id) + ')">Edit</button> ';
         if (canAdvance) actions += '<button class="btn btn-ghost btn-small" onclick="window.__advance(\'' + c.id + '\')">Simulate response</button> ';
         if (c.stage === "attention") {
           actions += '<select onchange="window.__route(\'' + c.id + '\', this.value)" style="width:auto;display:inline-block;">' +

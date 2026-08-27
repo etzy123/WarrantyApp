@@ -98,7 +98,7 @@ router.post("/order-lookup", orderLookupLimiter, asyncHandler(async (req, res) =
 // ---------- public: brand directory (read-only, used by the customer form's manual fallback) ----------
 router.get("/brands", asyncHandler(async (req, res) => {
   const { rows } = await pool.query(
-    "SELECT name, units_sold, house, contact_role, contact_email FROM brands ORDER BY units_sold DESC"
+    "SELECT name, units_sold, house, contact_role, contact_email FROM brands ORDER BY units_sold DESC, name ASC"
   );
   res.json(rows);
 }));
@@ -295,7 +295,7 @@ router.post("/ops/claims/:id/route", requireOpsAuth, asyncHandler(async (req, re
 
 // ---------- ops (protected): brand contact directory — read + edit ----------
 router.get("/ops/brands", requireOpsAuth, asyncHandler(async (req, res) => {
-  const { rows } = await pool.query("SELECT * FROM brands ORDER BY units_sold DESC");
+  const { rows } = await pool.query("SELECT * FROM brands ORDER BY units_sold DESC, name ASC");
   res.json(rows);
 }));
 

@@ -16,6 +16,33 @@ const SEED_BRANDS = [
   { name: "adidas Golf Originals", units_sold: 772, house: false, contact_role: "B2B Returns", contact_email: "b2breturns@adidasgolf-partners.com" },
   { name: "3 Putt Round", units_sold: 595, house: false, contact_role: "Customer Care", contact_email: "care@3puttround-partners.com" },
   { name: "Payntr Golf", units_sold: 368, house: false, contact_role: "Warranty Team", contact_email: "warranty@payntrgolf-partners.com" },
+
+  // The rest of the store's vendors, pulled from Shopify's full vendor list
+  // (productVendors) rather than the sales-ranked top 10 above — so every
+  // brand carried in the catalog has a row here and can get a real contact
+  // entered from the ops dashboard, not just the best sellers. No sales data
+  // pulled for these (units_sold defaults to 0), so they sort to the bottom
+  // of the ops directory until that's backfilled.
+  //
+  // NOTE: Shopify's vendor field is free text, and a few brands are entered
+  // inconsistently — "Adidas" / "adidas" / "adidas Golf Originals" and
+  // "YETI" / "Yeti" all appear as separate vendor strings. They're kept as
+  // separate rows here (merging them would be a guess), but since claim
+  // routing matches a product's vendor to a brand name exactly, a claim for
+  // a product tagged "Adidas" won't match a contact entered under "adidas".
+  // Worth cleaning up the vendor spelling in Shopify itself if that matters.
+  ...[
+    "Adidas", "adidas", "Anderson's", "APC Golf", "AS2OV Golf", "Bagjack Golf", "Baracuta",
+    "Blue Tees", "Bogner", "Bushnell", "Ciel Glue", "Clif", "Cole Haan", "CPH Golf",
+    "Dimple & Divot", "Eastside Golf", "Ecco", "Fella Golf", "Fyfe Golf", "G/FORE", "Garmin",
+    "Garmin Golf", "Ghost Golf", "Goatlane", "Golden Soul Golf", "Head Golf", "Hestra",
+    "J. Lindeberg", "Jain Golf", "Jason Markk", "Jones Golf", "Kiffe Golf", "Kjus", "Lacoste",
+    "Left of Field Golf", "Local Rule", "Lost Balls", "Macade", "Marsh Maille", "master-piece",
+    "MIIR", "Mileseey", "Minimal Golf", "Motocaddy", "New Balance Golf", "Nikon", "Oakley",
+    "Parel Studios", "Pas Normal Studios", "Pluto Golf", "Pop Trading Company", "Public Drip",
+    "Puma", "Quiet Golf", "Scotty Cameron", "Spektrum", "Sportr", "Stance", "Students Golf",
+    "Sunspel", "Tired", "Trophy Hunting", "Vessel Golf", "YETI", "Yeti", "Zero Friction",
+  ].map((name) => ({ name, units_sold: 0, house: false, contact_role: null, contact_email: null })),
 ];
 
 async function migrate() {
