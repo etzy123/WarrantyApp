@@ -2,14 +2,16 @@
 
 A small Node/Express app: customer-facing warranty form, an internal ops
 dashboard, a Postgres-backed claims queue, live Shopify order lookup, and
-Resend for the actual emails.
+SendGrid for the actual emails.
 
 ## What you need before deploying
 
 1. A **Railway** account (railway.app) — for hosting + Postgres.
-2. A **Resend** account (resend.com) — for sending real emails. Free tier is
-   plenty to start; you'll add a "sending domain" later to send as
-   `@bisquegolf.com` instead of Resend's shared test address.
+2. A **SendGrid** account (sendgrid.com) — for sending real emails. Under
+   Settings → Sender Authentication, verify either the whole `bisquegolf.com`
+   domain (recommended — lets you send from any `@bisquegolf.com` address) or
+   at minimum a Single Sender for `support@bisquegolf.com`. Sends will be
+   rejected by SendGrid until one of those is done.
 3. An app in Shopify's **Dev Dashboard** (dev.shopify.com) with the
    `read_orders,read_products` scopes. Unlike the old legacy custom-app
    screen, this doesn't hand you a static token up front — the app
@@ -32,9 +34,11 @@ Resend for the actual emails.
      Domain, if it's not already assigned one).
    - `SHOPIFY_API_KEY` / `SHOPIFY_API_SECRET` — from the Dev Dashboard app's
      API credentials page.
-   - `RESEND_API_KEY` — from Resend.
-   - `EMAIL_FROM` — start with `Bisque Golf Warranty Claims <onboarding@resend.dev>` until
-     your sending domain is verified.
+   - `SENDGRID_API_KEY` — from SendGrid (Settings → API Keys).
+   - `EMAIL_FROM` — e.g. `Bisque Golf Support <support@bisquegolf.com>` — must
+     match a verified sender/domain in SendGrid or sends will fail.
+   - `SUPPORT_CC_EMAIL` — CC'd on every brand + customer email, defaults to
+     `support@bisquegolf.com`.
    - `INTERNAL_NOTIFY_EMAIL` — where in-house and flagged-claim alerts go.
    - `OPS_USERNAME` / `OPS_PASSWORD` — protects `/ops.html` and its API.
 4. Deploy. Railway runs `npm install` then `node src/index.js`
@@ -54,17 +58,25 @@ Resend for the actual emails.
 
 ## Updating the brand directory
 
-The brand list (name, units sold, contact) lives in the `brands` table,
-seeded once from `src/migrate.js`. Update contacts either by editing that
-seed file and redeploying, or directly in Postgres via `railway connect
-postgres`. There's no live ShopifyQL query wired in for "most sold" — it's a
-snapshot; refresh it periodically (or wire up a scheduled job) rather than
-querying analytics on every page load.
+Brand contact names/emails are editable straight from `/ops.html` — click
+"Edit" next to any external brand in the directory table. Units-sold and the
+brand list itself still come from the one-time seed in `src/migrate.js`;
+there's no live ShopifyQL query wired in for "most sold," so refresh that
+seed periodically (or wire up a scheduled job) rather than querying
+analytics on every page load.
+
+## Email template
+
+The wording sent to brands lives in the `email_template` table (one row),
+also editable from `/ops.html`. It supports `{{placeholders}}` — see the
+hint text on that page for the full list. Any photos a customer attached to
+the claim are automatically included as email attachments; no template
+changes needed for that.
 
 ## Local development
 
 ```
-cp .env.example .env   # fill in real values, or leave Shopify/Resend blank —
+cp .env.example .env   # fill in real values, or leave Shopify/SendGrid blank —
                         # order lookup and email sending log a warning and no-op
 npm install
 npm start

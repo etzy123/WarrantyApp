@@ -1,6 +1,9 @@
 (function () {
   var selection = null; // { title, vendor, sku, routingType, customer, customerEmail, source }
   var currentOrder = null;
+  var selectedPhotos = []; // File objects, max 4
+  var MAX_PHOTOS = 4;
+  var MAX_PHOTO_BYTES = 5 * 1024 * 1024;
 
   function iconCheck(){ return '<svg viewBox="0 0 24 24" fill="none"><path d="M5 12l5 5 9-10" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg>'; }
   function iconFlag(){ return '<svg viewBox="0 0 24 24" fill="none"><path d="M12 2v20M12 4h7l-1.5 3L19 10h-7" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>'; }
@@ -60,6 +63,48 @@
     if (sel.customerEmail && !email.value) email.value = sel.customerEmail;
     document.getElementById("restOfForm").scrollIntoView({ behavior: "smooth", block: "nearest" });
   }
+
+  // ---------- photo upload (drag-and-drop + click-to-browse) ----------
+  var uploadZone = document.getElementById("uploadZone");
+  var photoInput = document.getElementById("f-photos");
+  var photoPreview = document.getElementById("photoPreview");
+
+  function renderPhotoPreview() {
+    photoPreview.innerHTML = selectedPhotos.map(function (file, i) {
+      return '<div class="photo-thumb"><img src="' + URL.createObjectURL(file) + '" alt=""><button type="button" onclick="window.__removePhoto(' + i + ')" aria-label="Remove photo">&times;</button></div>';
+    }).join("");
+  }
+
+  window.__removePhoto = function (i) {
+    selectedPhotos.splice(i, 1);
+    renderPhotoPreview();
+  };
+
+  function addPhotos(fileList) {
+    var rejected = [];
+    Array.prototype.forEach.call(fileList, function (file) {
+      if (selectedPhotos.length >= MAX_PHOTOS) return;
+      if (!/^image\//.test(file.type)) { rejected.push(file.name + " isn't an image"); return; }
+      if (file.size > MAX_PHOTO_BYTES) { rejected.push(file.name + " is over 5MB"); return; }
+      selectedPhotos.push(file);
+    });
+    renderPhotoPreview();
+    if (rejected.length) toast("Some photos were skipped", rejected.join(", "));
+  }
+
+  uploadZone.addEventListener("click", function () { photoInput.click(); });
+  uploadZone.addEventListener("keydown", function (e) { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); photoInput.click(); } });
+  photoInput.addEventListener("change", function () { addPhotos(photoInput.files); photoInput.value = ""; });
+
+  ["dragenter", "dragover"].forEach(function (evt) {
+    uploadZone.addEventListener(evt, function (e) { e.preventDefault(); uploadZone.classList.add("dragover"); });
+  });
+  ["dragleave", "drop"].forEach(function (evt) {
+    uploadZone.addEventListener(evt, function (e) { e.preventDefault(); uploadZone.classList.remove("dragover"); });
+  });
+  uploadZone.addEventListener("drop", function (e) {
+    if (e.dataTransfer && e.dataTransfer.files) addPhotos(e.dataTransfer.files);
+  });
 
   // ---------- order lookup ----------
   document.getElementById("lookupBtn").addEventListener("click", function () {
@@ -174,20 +219,19 @@
     submitBtn.disabled = true;
     submitBtn.textContent = "Submitting…";
 
-    var payload = {
-      orderNumber: document.getElementById("f-order").value.trim().replace(/^#/, ""),
-      customerName: document.getElementById("f-name").value.trim(),
-      customerEmail: document.getElementById("f-email").value.trim(),
-      brandName: selection.vendor,
-      productTitle: selection.title,
-      sku: selection.sku,
-      issue: document.getElementById("f-issue").value.trim() || "No description provided.",
-    };
+    var formData = new FormData();
+    formData.append("orderNumber", document.getElementById("f-order").value.trim().replace(/^#/, ""));
+    formData.append("customerName", document.getElementById("f-name").value.trim());
+    formData.append("customerEmail", document.getElementById("f-email").value.trim());
+    formData.append("brandName", selection.vendor || "");
+    formData.append("productTitle", selection.title);
+    formData.append("sku", selection.sku || "");
+    formData.append("issue", document.getElementById("f-issue").value.trim() || "No description provided.");
+    selectedPhotos.forEach(function (file) { formData.append("photos", file); });
 
     fetch("/api/claims", {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload),
+      body: formData,
     })
       .then(function (r) { return r.json().then(function (body) { return { ok: r.ok, body: body }; }); })
       .then(function (res) {
@@ -198,6 +242,8 @@
           return;
         }
         renderTracker(res.body);
+        selectedPhotos = [];
+        renderPhotoPreview();
         if (res.body.routing_type === "ambiguous") {
           toast("Flagged for manual routing", res.body.id + " needs a teammate to confirm the brand");
         } else if (res.body.routing_type === "house") {

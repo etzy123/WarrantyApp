@@ -83,7 +83,9 @@
           </div>
           <div class="field">
             <label>Photos (optional)</label>
-            <div class="upload">Drop photos here or click to browse — helps the brand assess the claim faster</div>
+            <div class="upload" id="uploadZone" tabindex="0" role="button" aria-label="Add photos">Drop photos here or click to browse — helps the brand assess the claim faster<br><span class="field-hint">Up to 4 photos, 5MB each</span></div>
+            <input type="file" id="f-photos" accept="image/*" multiple style="display:none;">
+            <div class="photo-grid" id="photoPreview" style="margin-top:10px;"></div>
           </div>
           <button type="submit" class="btn btn-primary" id="submitBtn">Submit claim</button>
         </div>

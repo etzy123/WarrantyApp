@@ -50,6 +50,47 @@ async function migrate() {
 
   await pool.query(`CREATE INDEX IF NOT EXISTS claims_stage_idx ON claims (stage);`);
 
+  // Photos a customer attaches to a claim at submission time. Stored directly
+  // in Postgres (bytea) rather than an external bucket — simplest option at
+  // this scale, and keeps everything in one place to back up.
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS claim_photos (
+      id          SERIAL PRIMARY KEY,
+      claim_id    TEXT NOT NULL REFERENCES claims(id) ON DELETE CASCADE,
+      filename    TEXT,
+      mime_type   TEXT NOT NULL,
+      data        BYTEA NOT NULL,
+      created_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+    );
+  `);
+  await pool.query(`CREATE INDEX IF NOT EXISTS claim_photos_claim_idx ON claim_photos (claim_id);`);
+
+  // Single editable row holding the outgoing brand-notification email
+  // template. Kept separate from hardcoded strings in email.js so it can be
+  // edited from the ops dashboard without a redeploy.
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS email_template (
+      id          INTEGER PRIMARY KEY DEFAULT 1,
+      subject     TEXT NOT NULL,
+      body        TEXT NOT NULL,
+      updated_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
+      CHECK (id = 1)
+    );
+  `);
+  await pool.query(
+    `INSERT INTO email_template (id, subject, body)
+     VALUES (1, $1, $2)
+     ON CONFLICT (id) DO NOTHING`,
+    [
+      "Warranty claim {{claim_id}} — {{product_title}}",
+      "Hi {{contact_role}},\n\n" +
+        "Bisque Golf has a warranty claim for a {{product_title}}{{sku_suffix}}, order #{{order_number}}.\n\n" +
+        'Reported issue: "{{issue}}"\n\n' +
+        "Could you advise on next steps — replacement, repair, or more info needed?\n\n" +
+        "Reference: {{claim_id}}",
+    ]
+  );
+
   // Holds the offline access token obtained via the OAuth install flow
   // (see shopifyAuth.js) — one row per shop this app has been installed to.
   await pool.query(`

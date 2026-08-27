@@ -33,14 +33,35 @@
   </div>
 
   <div class="section-head">
-    <div><h2>Brand contact directory</h2><p>Sorted by most sold &middot; synced from Shopify vendor data</p></div>
+    <div><h2>Brand contact directory</h2><p>Sorted by most sold &middot; click a contact to edit it</p></div>
   </div>
   <div class="table-wrap">
     <table>
-      <thead><tr><th>Brand</th><th class="num">Units sold, 12mo</th><th>Routes to</th><th>Contact</th></tr></thead>
-      <tbody id="brandTableBody"><tr><td colspan="4" class="empty-note">Loading…</td></tr></tbody>
+      <thead><tr><th>Brand</th><th class="num">Units sold, 12mo</th><th>Routes to</th><th>Contact</th><th></th></tr></thead>
+      <tbody id="brandTableBody"><tr><td colspan="5" class="empty-note">Loading…</td></tr></tbody>
     </table>
-    <div class="table-foot-note">Contacts are placeholders until real account reps are entered.</div>
+    <div class="table-foot-note">Edits save immediately and apply to the next claim routed to that brand.</div>
+  </div>
+
+  <div class="section-head">
+    <div><h2>Brand email template</h2><p>Sent to the brand's contact whenever a claim routes to them &middot; CC'd to support@bisquegolf.com</p></div>
+  </div>
+  <div class="card" id="templateCard">
+    <div class="field">
+      <label for="tplSubject">Subject</label>
+      <input id="tplSubject" type="text">
+    </div>
+    <div class="field">
+      <label for="tplBody">Body</label>
+      <textarea id="tplBody" style="min-height:180px;"></textarea>
+    </div>
+    <div class="card-hint" style="margin-bottom:14px;">
+      Placeholders you can use: <span class="mono">{{contact_role}}</span>, <span class="mono">{{product_title}}</span>,
+      <span class="mono">{{sku_suffix}}</span>, <span class="mono">{{order_number}}</span>, <span class="mono">{{issue}}</span>,
+      <span class="mono">{{claim_id}}</span>, <span class="mono">{{customer_name}}</span>. Any photos the customer attached
+      are sent along as email attachments automatically.
+    </div>
+    <button type="button" class="btn btn-primary" id="tplSaveBtn" style="width:auto;">Save template</button>
   </div>
 
   <div class="section-head">
@@ -48,10 +69,14 @@
   </div>
   <div class="table-wrap">
     <table>
-      <thead><tr><th>Claim</th><th>Customer</th><th>Brand</th><th>Item</th><th>Status</th><th>Updated</th><th></th></tr></thead>
-      <tbody id="queueTableBody"><tr><td colspan="7" class="empty-note">Loading…</td></tr></tbody>
+      <thead><tr><th>Claim</th><th>Customer</th><th>Brand</th><th>Item</th><th>Photos</th><th>Status</th><th>Updated</th><th></th></tr></thead>
+      <tbody id="queueTableBody"><tr><td colspan="8" class="empty-note">Loading…</td></tr></tbody>
     </table>
   </div>
+</div>
+
+<div class="modal-backdrop" id="editModalBackdrop">
+  <div class="modal-card" id="editModalCard"></div>
 </div>
 
 <script src="/ops.js"></script>
