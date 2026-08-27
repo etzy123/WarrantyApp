@@ -1,0 +1,19 @@
+{
+  "name": "fairway-route",
+  "version": "1.0.0",
+  "description": "Bisque Golf warranty claim portal — routes claims to the right brand contact via Shopify order lookup, and emails updates via Resend.",
+  "main": "src/index.js",
+  "engines": {
+    "node": ">=20.0.0"
+  },
+  "scripts": {
+    "start": "node src/index.js",
+    "migrate": "node src/migrate.js"
+  },
+  "dependencies": {
+    "express": "^4.19.2",
+    "pg": "^8.12.0",
+    "resend": "^4.0.1",
+    "dotenv": "^16.4.5"
+  }
+}
