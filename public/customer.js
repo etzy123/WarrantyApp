@@ -43,7 +43,7 @@
         brandsByName[b.name] = b;
         var opt = document.createElement("option");
         opt.value = b.name;
-        opt.textContent = b.name + (b.house ? " (in-house)" : "") + " — " + Number(b.units_sold).toLocaleString() + " sold";
+        opt.textContent = b.name + (b.house ? " (in-house)" : "");
         brandSelect.appendChild(opt);
       });
     })
@@ -64,6 +64,7 @@
   // ---------- order lookup ----------
   document.getElementById("lookupBtn").addEventListener("click", function () {
     var raw = document.getElementById("f-order").value.trim().replace(/^#/, "");
+    var lookupEmail = document.getElementById("f-lookup-email").value.trim();
     var resultHost = document.getElementById("orderResult");
     var errorHost = document.getElementById("lookupError");
     var manualBlock = document.getElementById("manualBlock");
@@ -71,7 +72,11 @@
     errorHost.innerHTML = "";
     resultHost.innerHTML = "";
     selection = null;
-    if (!raw) return;
+    if (!raw && !lookupEmail) return;
+    if (!raw || !lookupEmail) {
+      errorHost.innerHTML = '<div class="lookup-fail"><b>Both fields are needed</b>Enter the order number and the email it was placed with.</div>';
+      return;
+    }
 
     var btn = document.getElementById("lookupBtn");
     btn.disabled = true;
@@ -80,7 +85,7 @@
     fetch("/api/order-lookup", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ orderNumber: raw }),
+      body: JSON.stringify({ orderNumber: raw, email: lookupEmail }),
     })
       .then(function (r) { return r.json().then(function (body) { return { ok: r.ok, body: body }; }); })
       .then(function (res) {
@@ -90,10 +95,12 @@
         if (!res.ok) {
           if (res.body && /not configured/i.test(res.body.error || "")) {
             errorHost.innerHTML = '<div class="lookup-fail"><b>Shopify isn\'t connected yet</b>' + esc(res.body.error) + "</div>";
+          } else if (res.status === 429) {
+            errorHost.innerHTML = '<div class="lookup-fail"><b>Too many attempts</b>' + esc(res.body.error) + "</div>";
           } else {
-            resultHost.innerHTML = '<div class="lookup-fail"><b>We couldn\'t find order #' + esc(raw) + "</b>No match in Shopify for that number. Enter the product below and we'll route it manually.</div>";
+            resultHost.innerHTML = '<div class="lookup-fail"><b>We couldn\'t find that order</b>No order matches that number and email together. Enter the product below and we\'ll route it manually.</div>';
+            manualBlock.style.display = "block";
           }
-          manualBlock.style.display = "block";
           return;
         }
 

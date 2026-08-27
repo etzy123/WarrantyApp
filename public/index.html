@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Fairway Route — File a warranty claim</title>
+<title>Bisque Golf — Warranty Claims</title>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@500;600;700;800&family=Source+Sans+3:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
 <link rel="stylesheet" href="/styles.css">
 </head>
@@ -19,8 +19,8 @@
         </svg>
       </div>
       <div>
-        <div class="brand-name">Fairway Route</div>
-        <div class="brand-sub">Bisque Golf &middot; warranty claims</div>
+        <div class="brand-name">Bisque Golf</div>
+        <div class="brand-sub">Warranty Claims</div>
       </div>
     </div>
   </header>
@@ -37,13 +37,18 @@
         <h2>Find your order</h2>
         <div class="card-hint">We'll match it to the item and brand automatically.</div>
 
-        <div class="lookup-row">
+        <div class="field-row">
           <div class="field">
             <label for="f-order">Order number</label>
             <input id="f-order" type="text" placeholder="e.g. 36116" inputmode="numeric">
           </div>
-          <button type="button" class="btn btn-ghost" id="lookupBtn">Find order</button>
+          <div class="field">
+            <label for="f-lookup-email">Email used on the order</label>
+            <input id="f-lookup-email" type="email" placeholder="you@email.com">
+          </div>
         </div>
+        <button type="button" class="btn btn-ghost" id="lookupBtn" style="width:100%;">Find order</button>
+        <div class="field-hint">We check both together so no one else can look up your order by number alone.</div>
         <div id="lookupError"></div>
         <div id="orderResult"></div>
 
