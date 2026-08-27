@@ -75,6 +75,15 @@ async function migrate() {
     );
   `);
 
+  // Added later, for the brand invoice feature — ALTER rather than baked
+  // into CREATE TABLE so this applies cleanly to databases that already have
+  // a claims table from before this column existed.
+  await pool.query(`ALTER TABLE claims ADD COLUMN IF NOT EXISTS order_date TIMESTAMPTZ;`);
+  await pool.query(`ALTER TABLE claims ADD COLUMN IF NOT EXISTS quantity INTEGER;`);
+  await pool.query(`ALTER TABLE claims ADD COLUMN IF NOT EXISTS unit_price NUMERIC(12,2);`);
+  await pool.query(`ALTER TABLE claims ADD COLUMN IF NOT EXISTS currency TEXT;`);
+  await pool.query(`ALTER TABLE claims ADD COLUMN IF NOT EXISTS invoice_sent_at TIMESTAMPTZ;`);
+
   await pool.query(`CREATE INDEX IF NOT EXISTS claims_stage_idx ON claims (stage);`);
 
   // Photos a customer attaches to a claim at submission time. Stored directly

@@ -2,7 +2,8 @@ const express = require("express");
 const multer = require("multer");
 const { pool } = require("./db");
 const { findOrderByNumber } = require("./shopify");
-const { notifyBrand, notifyInternalQC, notifyFlagged, notifyCustomerStatus, getEmailTemplate } = require("./email");
+const { notifyBrand, notifyInternalQC, notifyFlagged, notifyCustomerStatus, notifyCustomerSubmitted, notifyInternalNewClaim, sendClaimInvoice, getEmailTemplate } = require("./email");
+const { buildClaimInvoice } = require("./invoice");
 const { requireOpsAuth } = require("./auth");
 const { asyncHandler } = require("./asyncHandler");
 const { rateLimit } = require("./rateLimit");
@@ -106,7 +107,7 @@ router.get("/brands", asyncHandler(async (req, res) => {
 // ---------- public: submit a claim (multipart — text fields + up to 4 photos) ----------
 router.post("/claims", handleUpload, asyncHandler(async (req, res) => {
   try {
-    const { orderNumber, customerName, customerEmail, brandName, productTitle, sku, issue } = req.body;
+    const { orderNumber, customerName, customerEmail, brandName, productTitle, sku, issue, quantity, unitPrice, currency, orderDate } = req.body;
     if (!productTitle || !issue) {
       return res.status(400).json({ error: "productTitle and issue are required" });
     }
@@ -118,10 +119,20 @@ router.post("/claims", handleUpload, asyncHandler(async (req, res) => {
     const { rows: countRows } = await pool.query("SELECT count(*)::int AS n FROM claims");
     const id = nextClaimId(countRows[0].n + 825); // keeps ids clear of the seeded demo range
 
+    // quantity/unitPrice/currency/orderDate only arrive when the claim came
+    // from a real Shopify order match (see customer.js) — a manually-entered
+    // claim has no purchase data to attach an invoice to, and that's fine;
+    // the invoice action just won't be available for it.
     await pool.query(
-      `INSERT INTO claims (id, order_number, customer_name, customer_email, brand_name, routing_type, product_title, sku, issue, stage)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`,
-      [id, orderNumber || null, customerName || null, customerEmail || null, brand ? brand.name : null, routingType, productTitle, sku || null, issue, stage]
+      `INSERT INTO claims (id, order_number, customer_name, customer_email, brand_name, routing_type, product_title, sku, issue, stage, quantity, unit_price, currency, order_date)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)`,
+      [
+        id, orderNumber || null, customerName || null, customerEmail || null, brand ? brand.name : null, routingType, productTitle, sku || null, issue, stage,
+        quantity ? parseInt(quantity, 10) : null,
+        unitPrice ? Number(unitPrice) : null,
+        currency || null,
+        orderDate || null,
+      ]
     );
 
     if (req.files && req.files.length) {
@@ -136,17 +147,39 @@ router.post("/claims", handleUpload, asyncHandler(async (req, res) => {
     const { rows } = await pool.query("SELECT * FROM claims WHERE id = $1", [id]);
     const claim = rows[0];
 
+    // Always let support know a claim came in — independent of routing
+    // outcome and of whether the customer gave an email at all, unlike the
+    // CCs below which piggyback on other sends.
+    try {
+      await notifyInternalNewClaim(claim);
+    } catch (emailErr) {
+      console.error("[claims] internal new-claim alert failed:", emailErr.message);
+    }
+
+    // Confirm receipt to the customer regardless of how this claim ends up
+    // routed — separate try/catch so a failure here never blocks the
+    // brand/internal notification below, or the claim from being recorded.
+    try {
+      await notifyCustomerSubmitted(claim);
+    } catch (emailErr) {
+      console.error("[claims] customer confirmation failed:", emailErr.message);
+    }
+
     // Fire the appropriate notification. Kept synchronous but non-fatal —
     // an email-provider hiccup shouldn't stop the claim from being recorded.
+    //
+    // External claims are the exception: the brand does NOT get emailed here.
+    // You review the claim in the ops dashboard first and press "Send to
+    // brand" yourself (see /ops/claims/:id/send-to-brand below) — the only
+    // things that happen automatically for an external claim are the two
+    // notifications above (support alert, customer confirmation), neither of
+    // which reaches the brand.
     try {
       if (routingType === "ambiguous") {
         await notifyFlagged(claim);
       } else if (routingType === "house") {
         await notifyInternalQC(claim);
         await pool.query("UPDATE claims SET stage = 'processing', updated_at = now() WHERE id = $1", [id]);
-      } else {
-        await notifyBrand(brand, claim);
-        await pool.query("UPDATE claims SET stage = 'routed', updated_at = now() WHERE id = $1", [id]);
       }
     } catch (emailErr) {
       console.error("[claims] notification failed:", emailErr.message);
@@ -249,11 +282,54 @@ router.patch("/ops/claims/:id", requireOpsAuth, asyncHandler(async (req, res) =>
   res.json(updated[0]);
 }));
 
+// ---------- ops (protected): send an already-matched external claim to its brand ----------
+// The one deliberate step where a brand actually gets emailed. A claim that
+// matches an external brand sits at stage "submitted" (support was already
+// alerted, customer already confirmed) until you press this — nothing goes
+// to the brand before that.
+router.post("/ops/claims/:id/send-to-brand", requireOpsAuth, asyncHandler(async (req, res) => {
+  const { rows } = await pool.query("SELECT * FROM claims WHERE id = $1", [req.params.id]);
+  const claim = rows[0];
+  if (!claim) return res.status(404).json({ error: "Not found" });
+  if (claim.routing_type !== "external") {
+    return res.status(400).json({ error: "This claim isn't matched to an external brand — use \"Route to…\" instead if it needs one." });
+  }
+
+  const brand = await getBrand(claim.brand_name);
+  if (!brand || !brand.contact_email) {
+    return res.status(400).json({ error: "This brand has no contact email on file yet — add one in the brand directory first." });
+  }
+
+  try {
+    await notifyBrand(brand, claim);
+  } catch (err) {
+    console.error("[ops] brand notify failed:", err.message);
+    return res.status(502).json({ error: `Could not send the email: ${err.message}` });
+  }
+
+  // notifyBrand() bundles a purchase invoice into this same email whenever
+  // the claim has purchase data (unit_price set) — keep invoice_sent_at in
+  // sync so the ops UI's "Invoice sent" status/button reflect that right away.
+  const { rows: updated } = await pool.query(
+    `UPDATE claims SET
+       stage = CASE WHEN stage = 'submitted' THEN 'routed' ELSE stage END,
+       invoice_sent_at = CASE WHEN $2::numeric IS NOT NULL THEN now() ELSE invoice_sent_at END,
+       updated_at = now()
+     WHERE id = $1 RETURNING *`,
+    [claim.id, claim.unit_price]
+  );
+  res.json(updated[0]);
+}));
+
 // ---------- ops (protected): advance a claim to its next stage ----------
 router.post("/ops/claims/:id/advance", requireOpsAuth, asyncHandler(async (req, res) => {
   const { rows } = await pool.query("SELECT * FROM claims WHERE id = $1", [req.params.id]);
   const claim = rows[0];
   if (!claim) return res.status(404).json({ error: "Not found" });
+
+  if (claim.routing_type === "external" && claim.stage === "submitted") {
+    return res.status(400).json({ error: "This claim hasn't been sent to the brand yet — use \"Send to brand\" first." });
+  }
 
   const idx = STAGE_ORDER.indexOf(claim.stage);
   if (idx === -1) return res.status(400).json({ error: `Cannot advance from stage "${claim.stage}"` });
@@ -284,13 +360,62 @@ router.post("/ops/claims/:id/route", requireOpsAuth, asyncHandler(async (req, re
   const { rows } = await pool.query("SELECT * FROM claims WHERE id = $1", [req.params.id]);
   const claim = rows[0];
 
+  let sendFailed = false;
   try {
     await notifyBrand(brand, claim);
   } catch (err) {
     console.error("[ops] brand notify failed:", err.message);
+    sendFailed = true;
+  }
+
+  // Same as /send-to-brand: notifyBrand() bundles the invoice automatically
+  // when there's purchase data, so mark invoice_sent_at in step with it.
+  if (!sendFailed && claim.unit_price != null) {
+    const { rows: updated } = await pool.query(
+      "UPDATE claims SET invoice_sent_at = now() WHERE id = $1 RETURNING *",
+      [claim.id]
+    );
+    return res.json(updated[0]);
   }
 
   res.json(claim);
+}));
+
+// ---------- ops (protected): generate + email a purchase invoice for a claim ----------
+// Manual, on-demand — you trigger this once you're ready, rather than it
+// firing automatically alongside the routing email. Only works for claims
+// that came from a real Shopify order match (unit_price present); a
+// manually-entered claim has no purchase data to build one from.
+router.post("/ops/claims/:id/invoice", requireOpsAuth, asyncHandler(async (req, res) => {
+  const { rows } = await pool.query("SELECT * FROM claims WHERE id = $1", [req.params.id]);
+  const claim = rows[0];
+  if (!claim) return res.status(404).json({ error: "Not found" });
+  if (claim.unit_price == null) {
+    return res.status(400).json({ error: "This claim has no purchase price on file (it wasn't matched to a Shopify order), so there's nothing to put on an invoice." });
+  }
+  if (claim.routing_type === "external" && claim.stage === "submitted") {
+    return res.status(400).json({ error: "Send this claim to the brand first — sending an invoice before they know about the claim would be confusing." });
+  }
+
+  const brand = await getBrand(claim.brand_name);
+  if (!brand || !brand.contact_email) {
+    return res.status(400).json({ error: "This claim's brand has no contact email on file yet — add one in the brand directory first." });
+  }
+
+  const pdfBuffer = await buildClaimInvoice(claim, brand);
+
+  try {
+    await sendClaimInvoice(brand, claim, pdfBuffer);
+  } catch (err) {
+    console.error("[ops] invoice send failed:", err.message);
+    return res.status(502).json({ error: `Could not send the invoice email: ${err.message}` });
+  }
+
+  const { rows: updated } = await pool.query(
+    "UPDATE claims SET invoice_sent_at = now() WHERE id = $1 RETURNING *",
+    [claim.id]
+  );
+  res.json(updated[0]);
 }));
 
 // ---------- ops (protected): brand contact directory — read + edit ----------

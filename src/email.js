@@ -1,5 +1,6 @@
 const sgMail = require("@sendgrid/mail");
 const { pool } = require("./db");
+const { buildClaimInvoice } = require("./invoice");
 
 if (process.env.SENDGRID_API_KEY) sgMail.setApiKey(process.env.SENDGRID_API_KEY);
 const sendgridReady = !!process.env.SENDGRID_API_KEY;
@@ -92,7 +93,7 @@ async function notifyBrand(brand, claim) {
   const subject = template
     ? fillTemplate(template.subject, vars)
     : `Warranty claim ${claim.id} — ${claim.product_title}`;
-  const body = template
+  let body = template
     ? fillTemplate(template.body, vars)
     : `Hi ${brand.contact_role || "there"},\n\n` +
       `Bisque Golf has a warranty claim for a ${claim.product_title}` +
@@ -102,6 +103,28 @@ async function notifyBrand(brand, claim) {
       `Reference: ${claim.id}`;
 
   const attachments = await getPhotoAttachments(claim.id);
+
+  // Bundles the purchase invoice into this same email whenever there's
+  // purchase data to build one from (i.e. the claim came from a real
+  // Shopify order match) — no separate click needed. A manually-entered
+  // claim has no price/date on file, so it just goes out without one.
+  const hasInvoice = claim.unit_price != null;
+  if (hasInvoice) {
+    const pdfBuffer = await buildClaimInvoice(claim, brand);
+    attachments.push({
+      filename: `invoice-${claim.id}.pdf`,
+      type: "application/pdf",
+      content: pdfBuffer.toString("base64"),
+      disposition: "attachment",
+    });
+  }
+
+  const trailerParts = [];
+  if (hasInvoice) trailerParts.push("a purchase invoice for this order");
+  if (attachments.length > (hasInvoice ? 1 : 0)) trailerParts.push("photos the customer provided");
+  if (trailerParts.length) {
+    body += `\n\n(Attached: ${trailerParts.join(" and ")}.)`;
+  }
 
   return sendEmail({
     to: brand.contact_email,
@@ -140,6 +163,48 @@ async function notifyFlagged(claim) {
   });
 }
 
+// Always fires to SUPPORT_CC the moment any claim is created, regardless of
+// routing outcome or whether the customer gave an email — unlike the
+// customer-confirmation CC (which only reaches support piggybacked on an
+// email that exists) or the brand-email CC (external claims only), this is
+// the one guaranteed "a claim came in" alert.
+async function notifyInternalNewClaim(claim) {
+  const routingLabel =
+    claim.routing_type === "house" ? "In-house (Bisque Golf)" :
+    claim.routing_type === "ambiguous" ? "Unmatched — needs manual routing" :
+    claim.brand_name || "External brand";
+  const body =
+    `A new warranty claim just came in.\n\n` +
+    `Reference: ${claim.id}\n` +
+    `Product: ${claim.product_title}${claim.sku ? ` (SKU ${claim.sku})` : ""}\n` +
+    `Order: ${claim.order_number ? `#${claim.order_number}` : "not provided"}\n` +
+    `Customer: ${claim.customer_name || "not provided"}${claim.customer_email ? ` <${claim.customer_email}>` : ""}\n` +
+    `Routing: ${routingLabel}\n\n` +
+    `Reported issue: "${claim.issue}"\n\n` +
+    `View it in the ops dashboard for full details.`;
+  return sendEmail({
+    to: SUPPORT_CC,
+    subject: `New claim ${claim.id} — ${claim.product_title}`,
+    text: body,
+  });
+}
+
+async function notifyCustomerSubmitted(claim) {
+  if (!claim.customer_email) return { skipped: true, reason: "no customer email on file" };
+  const body =
+    `Hi ${claim.customer_name || "there"},\n\n` +
+    `We've received your warranty claim for ${claim.product_title}` +
+    `${claim.order_number ? ` (order #${claim.order_number})` : ""} and we're on it.\n\n` +
+    `Reference: ${claim.id}\n\n` +
+    `We'll email you again as soon as there's an update — no need to reply to this one.\n\n— Bisque Golf`;
+  return sendEmail({
+    to: claim.customer_email,
+    cc: SUPPORT_CC,
+    subject: `We've got your claim — ${claim.id}`,
+    text: body,
+  });
+}
+
 async function notifyCustomerStatus(claim, statusLabel) {
   if (!claim.customer_email) return { skipped: true, reason: "no customer email on file" };
   const body =
@@ -154,4 +219,26 @@ async function notifyCustomerStatus(claim, statusLabel) {
   });
 }
 
-module.exports = { notifyBrand, notifyInternalQC, notifyFlagged, notifyCustomerStatus, getEmailTemplate, fillTemplate };
+async function sendClaimInvoice(brand, claim, pdfBuffer) {
+  const body =
+    `Hi ${brand.contact_role || "there"},\n\n` +
+    `Attached is the purchase invoice for the item in warranty claim ${claim.id} (${claim.product_title}), ` +
+    `for your records.\n\n` +
+    `Reference: ${claim.id}`;
+  return sendEmail({
+    to: brand.contact_email,
+    cc: SUPPORT_CC,
+    subject: `Purchase invoice — claim ${claim.id}`,
+    text: body,
+    attachments: [
+      {
+        filename: `invoice-${claim.id}.pdf`,
+        type: "application/pdf",
+        content: pdfBuffer.toString("base64"),
+        disposition: "attachment",
+      },
+    ],
+  });
+}
+
+module.exports = { notifyBrand, notifyInternalQC, notifyFlagged, notifyCustomerStatus, notifyCustomerSubmitted, notifyInternalNewClaim, sendClaimInvoice, getEmailTemplate, fillTemplate };

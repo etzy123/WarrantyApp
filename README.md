@@ -73,6 +73,16 @@ hint text on that page for the full list. Any photos a customer attached to
 the claim are automatically included as email attachments; no template
 changes needed for that.
 
+## Purchase invoices to brands
+
+A claim that came from a real Shopify order match (not the manual fallback)
+gets a "Send invoice" button in the ops queue. It generates a PDF showing the
+product, order number/date, quantity, and price, and emails it to the
+brand's contact as an attachment — for their records, not a bill (no VAT is
+calculated; see the comment in `src/invoice.js` if you ever want to turn this
+into an actual billing document). `COMPANY_NAME`/`COMPANY_ADDRESS`/
+`COMPANY_VAT_NUMBER` control what appears in the PDF's letterhead.
+
 ## Local development
 
 ```

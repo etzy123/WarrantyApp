@@ -195,6 +195,7 @@
     resolveSelection({
       title: item.title, vendor: item.vendor, sku: item.sku, routingType: item.routingType,
       customer: currentOrder.customerName, customerEmail: currentOrder.customerEmail, source: "order",
+      quantity: item.quantity, unitPrice: item.unitPrice, currency: item.currency, orderDate: currentOrder.orderDate,
     });
   };
 
@@ -227,6 +228,12 @@
     formData.append("productTitle", selection.title);
     formData.append("sku", selection.sku || "");
     formData.append("issue", document.getElementById("f-issue").value.trim() || "No description provided.");
+    if (selection.source === "order") {
+      if (selection.quantity != null) formData.append("quantity", selection.quantity);
+      if (selection.unitPrice != null) formData.append("unitPrice", selection.unitPrice);
+      if (selection.currency) formData.append("currency", selection.currency);
+      if (selection.orderDate) formData.append("orderDate", selection.orderDate);
+    }
     selectedPhotos.forEach(function (file) { formData.append("photos", file); });
 
     fetch("/api/claims", {
@@ -303,7 +310,7 @@
     } else {
       bodyHtml = idx >= 1
         ? '<div class="card-hint">We emailed ' + esc(claim.brand_name) + '\'s warranty contact with your claim details.</div>'
-        : '<div class="card-hint">We\'ll notify ' + esc(claim.brand_name) + '\'s warranty contact automatically once this is routed.</div>';
+        : '<div class="card-hint">We\'re reviewing this before it goes to ' + esc(claim.brand_name) + '\'s warranty contact.</div>';
     }
 
     slot.innerHTML =

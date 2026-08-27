@@ -125,7 +125,11 @@
       document.getElementById("queueTableBody").innerHTML = claims.map(function (c) {
         var chipClass = STAGE_CHIP[c.stage];
         var label = stageTitleFor(c.stage, c.routing_type);
-        var canAdvance = c.stage !== "resolved" && c.stage !== "attention";
+        // An external claim sits at "submitted" until you deliberately send
+        // it — nothing brand-facing (advancing the stage, an invoice) makes
+        // sense before that, so those actions stay hidden until it's sent.
+        var pendingSend = c.routing_type === "external" && c.stage === "submitted";
+        var canAdvance = c.stage !== "resolved" && c.stage !== "attention" && !pendingSend;
         var brandCell = c.routing_type === "ambiguous"
           ? '<span class="cell-faint">Unmatched</span><span class="tag tag-flag">Flagged</span>'
           : esc(c.brand_name) + (c.routing_type === "house" ? '<span class="tag tag-house">In-house</span>' : "");
@@ -133,6 +137,9 @@
           ? '<button class="photo-badge" onclick="window.__viewPhotos(' + jsAttr(c.id) + ')">' + c.photo_count + ' photo' + (c.photo_count === 1 ? "" : "s") + '</button>'
           : '<span class="cell-faint">—</span>';
         var actions = '<button class="btn btn-ghost btn-small" onclick="window.__editClaim(' + jsAttr(c.id) + ')">Edit</button> ';
+        if (pendingSend) {
+          actions += '<button class="btn btn-primary btn-small" style="width:auto;" onclick="window.__sendToBrand(' + jsAttr(c.id) + ')">Send to brand</button> ';
+        }
         if (canAdvance) actions += '<button class="btn btn-ghost btn-small" onclick="window.__advance(\'' + c.id + '\')">Simulate response</button> ';
         if (c.stage === "attention") {
           actions += '<select onchange="window.__route(\'' + c.id + '\', this.value)" style="width:auto;display:inline-block;">' +
@@ -140,9 +147,13 @@
             brandsCache.filter(function (b) { return !b.house; }).map(function (b) { return '<option value="' + esc(b.name) + '">' + esc(b.name) + "</option>"; }).join("") +
             "</select>";
         }
+        if (c.routing_type === "external" && c.unit_price != null && !pendingSend) {
+          actions += '<button class="btn btn-ghost btn-small" onclick="window.__sendInvoice(' + jsAttr(c.id) + ')">' + (c.invoice_sent_at ? "Resend invoice" : "Send invoice") + '</button> ';
+        }
+        var invoiceNote = c.invoice_sent_at ? '<div class="cell-faint" style="margin-top:2px;">Invoice sent ' + fmtTime(c.invoice_sent_at) + '</div>' : "";
         return "<tr><td class=\"mono cell-primary\">" + esc(c.id) + "</td><td>" + esc(c.customer_name || "—") + "</td><td>" + brandCell + "</td>" +
           '<td class="cell-faint">' + esc(c.product_title) + "</td><td>" + photosCell + "</td><td><span class=\"chip " + chipClass + "\">" + label + "</span></td>" +
-          '<td class="cell-faint mono">' + fmtTime(c.updated_at) + "</td><td>" + actions + "</td></tr>";
+          '<td class="cell-faint mono">' + fmtTime(c.updated_at) + "</td><td>" + actions + invoiceNote + "</td></tr>";
       }).join("") || '<tr><td colspan="8" class="empty-note">No claims yet.</td></tr>';
     });
   }
@@ -168,6 +179,29 @@
         toast("Routed by a teammate", id + " sent to " + brandName + "'s warranty team");
         loadClaims();
       });
+  };
+
+  window.__sendToBrand = function (id) {
+    fetch("/api/ops/claims/" + encodeURIComponent(id) + "/send-to-brand", { method: "POST" })
+      .then(function (r) { return r.json().then(function (b) { return { ok: r.ok, body: b }; }); })
+      .then(function (res) {
+        if (!res.ok) { toast("Couldn't send to brand", res.body.error || ""); return; }
+        var extra = res.body.invoice_sent_at ? " (including the purchase invoice)" : "";
+        toast("Sent to brand", id + "'s details were emailed to " + res.body.brand_name + extra);
+        loadClaims();
+      })
+      .catch(function () { toast("Couldn't send to brand", "Could not reach the server."); });
+  };
+
+  window.__sendInvoice = function (id) {
+    fetch("/api/ops/claims/" + encodeURIComponent(id) + "/invoice", { method: "POST" })
+      .then(function (r) { return r.json().then(function (b) { return { ok: r.ok, body: b }; }); })
+      .then(function (res) {
+        if (!res.ok) { toast("Couldn't send invoice", res.body.error || ""); return; }
+        toast("Invoice sent", id + "'s purchase invoice was emailed to the brand");
+        loadClaims();
+      })
+      .catch(function () { toast("Couldn't send invoice", "Could not reach the server."); });
   };
 
   window.__editClaim = function (id) {

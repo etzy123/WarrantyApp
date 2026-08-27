@@ -24,6 +24,7 @@ const ORDER_QUERY = `
         node {
           id
           name
+          createdAt
           customer { firstName lastName email }
           lineItems(first: 25) {
             edges {
@@ -33,6 +34,7 @@ const ORDER_QUERY = `
                 sku
                 vendor
                 image { url }
+                originalUnitPriceSet { shopMoney { amount currencyCode } }
               }
             }
           }
@@ -87,6 +89,7 @@ async function findOrderByNumber(rawNumber) {
   return {
     id: node.id,
     name: node.name,
+    orderDate: node.createdAt,
     customerName: node.customer
       ? [node.customer.firstName, node.customer.lastName].filter(Boolean).join(" ")
       : null,
@@ -97,6 +100,8 @@ async function findOrderByNumber(rawNumber) {
       sku: e.node.sku,
       vendor: e.node.vendor || null,
       image: e.node.image ? e.node.image.url : null,
+      unitPrice: e.node.originalUnitPriceSet ? e.node.originalUnitPriceSet.shopMoney.amount : null,
+      currency: e.node.originalUnitPriceSet ? e.node.originalUnitPriceSet.shopMoney.currencyCode : null,
     })),
   };
 }
