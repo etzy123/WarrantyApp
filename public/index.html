@@ -48,9 +48,10 @@
           </div>
         </div>
         <button type="button" class="btn btn-ghost" id="lookupBtn" style="width:100%;">Find order</button>
-        <div class="field-hint">We check both together so no one else can look up your order by number alone.</div>
+        <div class="field-hint">We check both together so no one else can look up your order by number alone. Already filed a claim on this order? This will show you its status.</div>
         <div id="lookupError"></div>
         <div id="orderResult"></div>
+        <div id="fileAnotherWrap" style="display:none;margin-top:6px;"><button type="button" class="link-btn" id="fileAnotherBtn">File a claim for a different item on this order</button></div>
 
         <div id="manualBlock" style="display:none;">
           <div class="divider-or">or enter it manually</div>
@@ -80,13 +81,19 @@
           <div class="field">
             <label for="f-issue">Describe the issue</label>
             <textarea id="f-issue" placeholder="What happened, and when did you first notice it?"></textarea>
+            <div class="field-hint">We only cover manufacturing defects — not normal wear and tear, cosmetic wear, or damage from an accident or misuse.</div>
           </div>
           <div class="field">
-            <label>Photos (optional)</label>
-            <div class="upload" id="uploadZone" tabindex="0" role="button" aria-label="Add photos">Drop photos here or click to browse — helps the brand assess the claim faster<br><span class="field-hint">Up to 4 photos, 5MB each</span></div>
-            <input type="file" id="f-photos" accept="image/*" multiple style="display:none;">
+            <label>Photos of the damage — at least 3 required</label>
+            <div class="upload" id="uploadZone" tabindex="0" role="button" aria-label="Add photos">Drop photos here or click to browse — clear photos help the brand approve the claim faster<br><span class="field-hint">3–4 photos, 5MB each</span></div>
+            <input type="file" id="f-photos" accept="image/*" capture="environment" multiple style="display:none;">
             <div class="photo-grid" id="photoPreview" style="margin-top:10px;"></div>
+            <div class="field-hint" id="photoCountHint" style="margin-top:6px;">0 of 3 minimum added.</div>
           </div>
+          <label class="field-checkbox">
+            <input type="checkbox" id="f-confirm-defect">
+            <span>I confirm this is a manufacturing defect, not normal wear and tear or accidental damage.</span>
+          </label>
           <button type="submit" class="btn btn-primary" id="submitBtn">Submit claim</button>
         </div>
       </form>

@@ -19,9 +19,18 @@ const ALL_STAGES = ["submitted", "routed", "processing", "resolved", "attention"
 // of that so guessing email+order combinations isn't cheap.
 const orderLookupLimiter = rateLimit({ windowMs: 15 * 60 * 1000, max: 20 });
 
+// Separate bucket from orderLookupLimiter — the customer form now checks for
+// an existing claim on every "Find order" click, so this fires roughly
+// alongside (not instead of) an order lookup and needs its own headroom.
+const claimLookupLimiter = rateLimit({ windowMs: 15 * 60 * 1000, max: 30 });
+
+const MIN_PHOTOS = 3;
+
 // Claim photos live in Postgres (bytea) rather than an external bucket —
 // simplest option at this scale. Capped at 4 photos / 5MB each so a claim
-// submission can't blow up the database or an outgoing email.
+// submission can't blow up the database or an outgoing email. The minimum
+// (3) is enforced separately below, after multer has parsed the upload —
+// multer itself only knows how to cap a count, not floor it.
 const upload = multer({
   storage: multer.memoryStorage(),
   limits: { fileSize: 5 * 1024 * 1024, files: 4 },
@@ -96,6 +105,23 @@ router.post("/order-lookup", orderLookupLimiter, asyncHandler(async (req, res) =
   }
 }));
 
+// ---------- public: check for an existing claim on an order (customer status lookup) ----------
+// Same email+order double-check as /order-lookup, and for the same reason —
+// without requiring the order's own email, this would let anyone page
+// through claim IDs or order numbers and read back another customer's
+// claim details.
+router.post("/claim-lookup", claimLookupLimiter, asyncHandler(async (req, res) => {
+  const { orderNumber, email } = req.body;
+  if (!orderNumber || !email) return res.status(400).json({ error: "orderNumber and email are required" });
+  const { rows } = await pool.query(
+    `SELECT * FROM claims WHERE order_number = $1 AND lower(customer_email) = lower($2)
+     ORDER BY created_at DESC LIMIT 1`,
+    [orderNumber, email]
+  );
+  if (!rows[0]) return res.status(404).json({ error: "No claim found for that order and email." });
+  res.json(rows[0]);
+}));
+
 // ---------- public: brand directory (read-only, used by the customer form's manual fallback) ----------
 router.get("/brands", asyncHandler(async (req, res) => {
   const { rows } = await pool.query(
@@ -107,9 +133,15 @@ router.get("/brands", asyncHandler(async (req, res) => {
 // ---------- public: submit a claim (multipart — text fields + up to 4 photos) ----------
 router.post("/claims", handleUpload, asyncHandler(async (req, res) => {
   try {
-    const { orderNumber, customerName, customerEmail, brandName, productTitle, sku, issue, quantity, unitPrice, currency, orderDate } = req.body;
+    const { orderNumber, customerName, customerEmail, brandName, productTitle, sku, issue, quantity, unitPrice, currency, orderDate, confirmDefect } = req.body;
     if (!productTitle || !issue) {
       return res.status(400).json({ error: "productTitle and issue are required" });
+    }
+    if (!req.files || req.files.length < MIN_PHOTOS) {
+      return res.status(400).json({ error: `Please attach at least ${MIN_PHOTOS} photos of the damage.` });
+    }
+    if (confirmDefect !== "true") {
+      return res.status(400).json({ error: "Please confirm this is a manufacturing defect before submitting." });
     }
 
     const brand = await getBrand(brandName);

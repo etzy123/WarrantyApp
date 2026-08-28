@@ -23,49 +23,31 @@
         <div class="brand-sub">Warranty Claims &middot; Internal Ops</div>
       </div>
     </div>
-    <a href="/" class="btn btn-ghost btn-small">Customer portal &rarr;</a>
+    <div style="display:flex;gap:8px;">
+      <a href="/ops-brands.html" class="btn btn-ghost btn-small">Brand directory &amp; template &rarr;</a>
+      <a href="/" class="btn btn-ghost btn-small">Customer portal &rarr;</a>
+    </div>
   </header>
 
   <div class="intro">
     <span class="eyebrow">Internal view</span>
-    <h1>Ops dashboard</h1>
-    <p>Where every claim stands, and who at each brand owns it.</p>
+    <h1>Claims queue</h1>
+    <p>Where every claim stands, right now.</p>
   </div>
 
   <div class="section-head">
-    <div><h2>Brand contact directory</h2><p>Sorted by most sold &middot; click a contact to edit it</p></div>
+    <div><h2>Claims</h2><p id="queueCount">&nbsp;</p></div>
   </div>
-  <div class="table-wrap">
-    <table>
-      <thead><tr><th>Brand</th><th class="num">Units sold, 12mo</th><th>Routes to</th><th>Contact</th><th></th></tr></thead>
-      <tbody id="brandTableBody"><tr><td colspan="5" class="empty-note">Loading…</td></tr></tbody>
-    </table>
-    <div class="table-foot-note">Edits save immediately and apply to the next claim routed to that brand.</div>
-  </div>
-
-  <div class="section-head">
-    <div><h2>Brand email template</h2><p>Sent to the brand's contact whenever a claim routes to them &middot; CC'd to support@bisquegolf.com</p></div>
-  </div>
-  <div class="card" id="templateCard">
-    <div class="field">
-      <label for="tplSubject">Subject</label>
-      <input id="tplSubject" type="text">
-    </div>
-    <div class="field">
-      <label for="tplBody">Body</label>
-      <textarea id="tplBody" style="min-height:180px;"></textarea>
-    </div>
-    <div class="card-hint" style="margin-bottom:14px;">
-      Placeholders you can use: <span class="mono">{{contact_role}}</span>, <span class="mono">{{product_title}}</span>,
-      <span class="mono">{{sku_suffix}}</span>, <span class="mono">{{order_number}}</span>, <span class="mono">{{issue}}</span>,
-      <span class="mono">{{claim_id}}</span>, <span class="mono">{{customer_name}}</span>. Any photos the customer attached
-      are sent along as email attachments automatically.
-    </div>
-    <button type="button" class="btn btn-primary" id="tplSaveBtn" style="width:auto;">Save template</button>
-  </div>
-
-  <div class="section-head">
-    <div><h2>Claims queue</h2><p id="queueCount">&nbsp;</p></div>
+  <div class="filter-bar">
+    <select id="statusFilter">
+      <option value="">All statuses</option>
+      <option value="submitted">Submitted</option>
+      <option value="routed">Routed / sent to brand</option>
+      <option value="processing">Processing</option>
+      <option value="resolved">Resolved</option>
+      <option value="attention">Needs routing</option>
+    </select>
+    <input type="search" id="claimSearch" placeholder="Search customer, claim ID, order #, or brand…">
   </div>
   <div class="table-wrap">
     <table>

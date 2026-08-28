@@ -3,6 +3,7 @@
   var currentOrder = null;
   var selectedPhotos = []; // File objects, max 4
   var MAX_PHOTOS = 4;
+  var MIN_PHOTOS = 3;
   var MAX_PHOTO_BYTES = 5 * 1024 * 1024;
 
   function iconCheck(){ return '<svg viewBox="0 0 24 24" fill="none"><path d="M5 12l5 5 9-10" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg>'; }
@@ -73,6 +74,17 @@
     photoPreview.innerHTML = selectedPhotos.map(function (file, i) {
       return '<div class="photo-thumb"><img src="' + URL.createObjectURL(file) + '" alt=""><button type="button" onclick="window.__removePhoto(' + i + ')" aria-label="Remove photo">&times;</button></div>';
     }).join("");
+    var hint = document.getElementById("photoCountHint");
+    if (hint) {
+      var n = selectedPhotos.length;
+      if (n >= MIN_PHOTOS) {
+        hint.textContent = n + " photo" + (n === 1 ? "" : "s") + " added.";
+        hint.style.color = "";
+      } else {
+        hint.textContent = n + " of " + MIN_PHOTOS + " minimum added.";
+        hint.style.color = "var(--status-attention)";
+      }
+    }
   }
 
   window.__removePhoto = function (i) {
@@ -107,21 +119,17 @@
   });
 
   // ---------- order lookup ----------
-  document.getElementById("lookupBtn").addEventListener("click", function () {
-    var raw = document.getElementById("f-order").value.trim().replace(/^#/, "");
-    var lookupEmail = document.getElementById("f-lookup-email").value.trim();
+  function runOrderLookup(raw, lookupEmail) {
     var resultHost = document.getElementById("orderResult");
     var errorHost = document.getElementById("lookupError");
     var manualBlock = document.getElementById("manualBlock");
+    document.getElementById("fileAnotherWrap").style.display = "none";
+    document.getElementById("trackerSlot").innerHTML =
+      '<div class="card"><h2>Your claim tracker</h2><div class="card-hint">Find an order and submit a claim to see it move from your desk to the brand\'s.</div><div class="empty-note">No active claim yet.</div></div>';
     document.getElementById("restOfForm").style.display = "none";
     errorHost.innerHTML = "";
     resultHost.innerHTML = "";
     selection = null;
-    if (!raw && !lookupEmail) return;
-    if (!raw || !lookupEmail) {
-      errorHost.innerHTML = '<div class="lookup-fail"><b>Both fields are needed</b>Enter the order number and the email it was placed with.</div>';
-      return;
-    }
 
     var btn = document.getElementById("lookupBtn");
     btn.disabled = true;
@@ -173,6 +181,66 @@
         btn.textContent = "Find order";
         errorHost.innerHTML = '<div class="lookup-fail"><b>Something went wrong</b>Could not reach the server. Try again in a moment.</div>';
       });
+  }
+
+  document.getElementById("fileAnotherBtn").addEventListener("click", function () {
+    var raw = document.getElementById("f-order").value.trim().replace(/^#/, "");
+    var lookupEmail = document.getElementById("f-lookup-email").value.trim();
+    runOrderLookup(raw, lookupEmail);
+  });
+
+  document.getElementById("lookupBtn").addEventListener("click", function () {
+    var raw = document.getElementById("f-order").value.trim().replace(/^#/, "");
+    var lookupEmail = document.getElementById("f-lookup-email").value.trim();
+    var errorHost = document.getElementById("lookupError");
+    var resultHost = document.getElementById("orderResult");
+    document.getElementById("fileAnotherWrap").style.display = "none";
+    document.getElementById("restOfForm").style.display = "none";
+    errorHost.innerHTML = "";
+    resultHost.innerHTML = "";
+    selection = null;
+    if (!raw && !lookupEmail) return;
+    if (!raw || !lookupEmail) {
+      errorHost.innerHTML = '<div class="lookup-fail"><b>Both fields are needed</b>Enter the order number and the email it was placed with.</div>';
+      return;
+    }
+
+    var btn = document.getElementById("lookupBtn");
+    btn.disabled = true;
+    btn.textContent = "Looking up…";
+
+    // Check for an existing claim on this order first — if there's already
+    // one on file, show its status instead of walking the customer back
+    // through submitting a new claim for the same thing.
+    fetch("/api/claim-lookup", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ orderNumber: raw, email: lookupEmail }),
+    })
+      .then(function (r) { return r.json().then(function (body) { return { ok: r.ok, body: body }; }); })
+      .then(function (res) {
+        if (res.ok) {
+          btn.disabled = false;
+          btn.textContent = "Find order";
+          renderTracker(res.body);
+          document.getElementById("fileAnotherWrap").style.display = "block";
+          return;
+        }
+        if (res.status === 429) {
+          btn.disabled = false;
+          btn.textContent = "Find order";
+          errorHost.innerHTML = '<div class="lookup-fail"><b>Too many attempts</b>' + esc(res.body.error) + "</div>";
+          return;
+        }
+        // No claim on file yet (404) — proceed to the normal order lookup
+        // so they can submit one.
+        runOrderLookup(raw, lookupEmail);
+      })
+      .catch(function () {
+        // If the status check itself fails, don't block filing a claim —
+        // just fall through to the normal order lookup.
+        runOrderLookup(raw, lookupEmail);
+      });
   });
 
   window.__pickItem = function (idx) {
@@ -216,6 +284,16 @@
     e.preventDefault();
     if (!selection) return;
 
+    if (selectedPhotos.length < MIN_PHOTOS) {
+      toast("More photos needed", "Please attach at least " + MIN_PHOTOS + " photos of the damage.");
+      document.getElementById("uploadZone").scrollIntoView({ behavior: "smooth", block: "center" });
+      return;
+    }
+    if (!document.getElementById("f-confirm-defect").checked) {
+      toast("Confirmation needed", "Please confirm this is a manufacturing defect before submitting.");
+      return;
+    }
+
     var submitBtn = document.getElementById("submitBtn");
     submitBtn.disabled = true;
     submitBtn.textContent = "Submitting…";
@@ -228,6 +306,7 @@
     formData.append("productTitle", selection.title);
     formData.append("sku", selection.sku || "");
     formData.append("issue", document.getElementById("f-issue").value.trim() || "No description provided.");
+    formData.append("confirmDefect", "true");
     if (selection.source === "order") {
       if (selection.quantity != null) formData.append("quantity", selection.quantity);
       if (selection.unitPrice != null) formData.append("unitPrice", selection.unitPrice);
@@ -256,7 +335,7 @@
         } else if (res.body.routing_type === "house") {
           toast("Sent to internal QC", "Bisque Golf QC team notified");
         } else {
-          toast("Email sent to brand", res.body.brand_name + "'s warranty contact notified");
+          toast("Claim submitted", "We're reviewing it before it goes to " + res.body.brand_name + "'s warranty contact");
         }
       })
       .catch(function () {

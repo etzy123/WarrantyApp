@@ -53,110 +53,74 @@
   backdrop.addEventListener("click", function (e) { if (e.target === backdrop) closeModal(); });
   window.__closeModal = closeModal;
 
-  // ---------- brand directory ----------
-  function loadBrands() {
-    return fetch("/api/brands").then(function (r) { return r.json(); }).then(function (brands) {
+  // ---------- brands (read-only here — just to populate dropdowns; the
+  // brand directory itself lives on its own page now, ops-brands.html) ----------
+  function loadBrandsForDropdowns() {
+    return fetch("/api/ops/brands").then(function (r) { return r.json(); }).then(function (brands) {
       brandsCache = brands;
-      document.getElementById("brandTableBody").innerHTML = brands.map(function (b) {
-        return "<tr><td class=\"cell-primary\">" + esc(b.name) + (b.house ? '<span class="tag tag-house">In-house</span>' : "") + "</td>" +
-          '<td class="num mono">' + Number(b.units_sold).toLocaleString() + "</td>" +
-          '<td class="cell-faint">' + (b.house ? "Internal QC queue" : "External email") + "</td>" +
-          "<td>" + (b.house ? '<span class="cell-faint">—</span>' : esc(b.contact_role || "—") + '<span class="cell-faint mono" style="display:block;font-size:11.5px;">' + esc(b.contact_email || "no email set") + "</span>") + "</td>" +
-          "<td>" + (b.house ? "" : '<button class="link-btn" onclick="window.__editBrand(' + jsAttr(b.name) + ')">Edit</button>') + "</td></tr>";
-      }).join("");
     });
   }
-
-  window.__editBrand = function (name) {
-    var b = brandsCache.find(function (x) { return x.name === name; });
-    if (!b) return;
-    openModal(
-      '<h3>Edit contact — ' + esc(b.name) + '</h3>' +
-      '<div class="field"><label for="mRole">Contact role</label><input id="mRole" type="text" value="' + esc(b.contact_role || "") + '" placeholder="e.g. Warranty Support"></div>' +
-      '<div class="field" style="margin-bottom:0;"><label for="mEmail">Contact email</label><input id="mEmail" type="email" value="' + esc(b.contact_email || "") + '" placeholder="warranty@brand.com"></div>' +
-      '<div class="modal-actions"><button class="btn btn-ghost" onclick="window.__closeModal()">Cancel</button><button class="btn btn-primary" id="mSaveBtn">Save</button></div>'
-    );
-    document.getElementById("mSaveBtn").addEventListener("click", function () {
-      var role = document.getElementById("mRole").value.trim();
-      var email = document.getElementById("mEmail").value.trim();
-      fetch("/api/ops/brands/" + encodeURIComponent(name), {
-        method: "PATCH", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ contactRole: role, contactEmail: email }),
-      })
-        .then(function (r) { return r.json().then(function (body) { return { ok: r.ok, body: body }; }); })
-        .then(function (res) {
-          if (!res.ok) { toast("Couldn't save contact", res.body.error || ""); return; }
-          toast("Contact updated", name + "'s warranty contact was saved");
-          closeModal();
-          loadBrands();
-        })
-        .catch(function () { toast("Couldn't save contact", "Could not reach the server."); });
-    });
-  };
-
-  // ---------- email template ----------
-  function loadTemplate() {
-    return fetch("/api/ops/email-template").then(function (r) { return r.json(); }).then(function (t) {
-      document.getElementById("tplSubject").value = t.subject || "";
-      document.getElementById("tplBody").value = t.body || "";
-    });
-  }
-  document.getElementById("tplSaveBtn").addEventListener("click", function () {
-    var subject = document.getElementById("tplSubject").value.trim();
-    var body = document.getElementById("tplBody").value.trim();
-    if (!subject || !body) { toast("Couldn't save template", "Subject and body can't be empty."); return; }
-    fetch("/api/ops/email-template", {
-      method: "PUT", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ subject: subject, body: body }),
-    })
-      .then(function (r) { return r.json().then(function (b) { return { ok: r.ok, body: b }; }); })
-      .then(function (res) {
-        if (!res.ok) { toast("Couldn't save template", res.body.error || ""); return; }
-        toast("Template saved", "New brand claims will use this wording.");
-      })
-      .catch(function () { toast("Couldn't save template", "Could not reach the server."); });
-  });
 
   // ---------- claims queue ----------
+  var statusFilter = document.getElementById("statusFilter");
+  var claimSearch = document.getElementById("claimSearch");
+
+  function matchesFilters(c) {
+    if (statusFilter.value && c.stage !== statusFilter.value) return false;
+    var q = claimSearch.value.trim().toLowerCase();
+    if (!q) return true;
+    var haystack = [c.id, c.customer_name, c.order_number, c.brand_name, c.product_title].map(function (v) { return (v || "").toLowerCase(); }).join(" ");
+    return haystack.indexOf(q) !== -1;
+  }
+
+  function renderClaims() {
+    var claims = claimsCache.filter(matchesFilters);
+    var suffix = claims.length === claimsCache.length ? "" : " of " + claimsCache.length;
+    document.getElementById("queueCount").textContent = claims.length + suffix + " claim" + (claims.length === 1 ? "" : "s") + " shown";
+    document.getElementById("queueTableBody").innerHTML = claims.map(function (c) {
+      var chipClass = STAGE_CHIP[c.stage];
+      var label = stageTitleFor(c.stage, c.routing_type);
+      // An external claim sits at "submitted" until you deliberately send
+      // it — nothing brand-facing (advancing the stage, an invoice) makes
+      // sense before that, so those actions stay hidden until it's sent.
+      var pendingSend = c.routing_type === "external" && c.stage === "submitted";
+      var canAdvance = c.stage !== "resolved" && c.stage !== "attention" && !pendingSend;
+      var brandCell = c.routing_type === "ambiguous"
+        ? '<span class="cell-faint">Unmatched</span><span class="tag tag-flag">Flagged</span>'
+        : esc(c.brand_name) + (c.routing_type === "house" ? '<span class="tag tag-house">In-house</span>' : "");
+      var photosCell = c.photo_count > 0
+        ? '<button class="photo-badge" onclick="window.__viewPhotos(' + jsAttr(c.id) + ')">' + c.photo_count + ' photo' + (c.photo_count === 1 ? "" : "s") + '</button>'
+        : '<span class="cell-faint">—</span>';
+      var actions = '<button class="btn btn-ghost btn-small" onclick="window.__editClaim(' + jsAttr(c.id) + ')">Edit</button> ';
+      if (pendingSend) {
+        actions += '<button class="btn btn-primary btn-small" style="width:auto;" onclick="window.__sendToBrand(' + jsAttr(c.id) + ')">Send to brand</button> ';
+      }
+      if (canAdvance) actions += '<button class="btn btn-ghost btn-small" onclick="window.__advance(\'' + c.id + '\')">Simulate response</button> ';
+      if (c.stage === "attention") {
+        actions += '<select onchange="window.__route(\'' + c.id + '\', this.value)" style="width:auto;display:inline-block;">' +
+          '<option value="">Route to…</option>' +
+          brandsCache.filter(function (b) { return !b.house; }).map(function (b) { return '<option value="' + esc(b.name) + '">' + esc(b.name) + "</option>"; }).join("") +
+          "</select>";
+      }
+      if (c.routing_type === "external" && c.unit_price != null && !pendingSend) {
+        actions += '<button class="btn btn-ghost btn-small" onclick="window.__sendInvoice(' + jsAttr(c.id) + ')">' + (c.invoice_sent_at ? "Resend invoice" : "Send invoice") + '</button> ';
+      }
+      var invoiceNote = c.invoice_sent_at ? '<div class="cell-faint" style="margin-top:2px;">Invoice sent ' + fmtTime(c.invoice_sent_at) + '</div>' : "";
+      return "<tr><td class=\"mono cell-primary\">" + esc(c.id) + "</td><td>" + esc(c.customer_name || "—") + "</td><td>" + brandCell + "</td>" +
+        '<td class="cell-faint">' + esc(c.product_title) + "</td><td>" + photosCell + "</td><td><span class=\"chip " + chipClass + "\">" + label + "</span></td>" +
+        '<td class="cell-faint mono">' + fmtTime(c.updated_at) + "</td><td>" + actions + invoiceNote + "</td></tr>";
+    }).join("") || '<tr><td colspan="8" class="empty-note">' + (claimsCache.length ? "No claims match this filter." : "No claims yet.") + '</td></tr>';
+  }
+
   function loadClaims() {
     return fetch("/api/ops/claims").then(function (r) { return r.json(); }).then(function (claims) {
       claimsCache = claims;
-      document.getElementById("queueCount").textContent = claims.length + " claim" + (claims.length === 1 ? "" : "s") + " in the pipeline";
-      document.getElementById("queueTableBody").innerHTML = claims.map(function (c) {
-        var chipClass = STAGE_CHIP[c.stage];
-        var label = stageTitleFor(c.stage, c.routing_type);
-        // An external claim sits at "submitted" until you deliberately send
-        // it — nothing brand-facing (advancing the stage, an invoice) makes
-        // sense before that, so those actions stay hidden until it's sent.
-        var pendingSend = c.routing_type === "external" && c.stage === "submitted";
-        var canAdvance = c.stage !== "resolved" && c.stage !== "attention" && !pendingSend;
-        var brandCell = c.routing_type === "ambiguous"
-          ? '<span class="cell-faint">Unmatched</span><span class="tag tag-flag">Flagged</span>'
-          : esc(c.brand_name) + (c.routing_type === "house" ? '<span class="tag tag-house">In-house</span>' : "");
-        var photosCell = c.photo_count > 0
-          ? '<button class="photo-badge" onclick="window.__viewPhotos(' + jsAttr(c.id) + ')">' + c.photo_count + ' photo' + (c.photo_count === 1 ? "" : "s") + '</button>'
-          : '<span class="cell-faint">—</span>';
-        var actions = '<button class="btn btn-ghost btn-small" onclick="window.__editClaim(' + jsAttr(c.id) + ')">Edit</button> ';
-        if (pendingSend) {
-          actions += '<button class="btn btn-primary btn-small" style="width:auto;" onclick="window.__sendToBrand(' + jsAttr(c.id) + ')">Send to brand</button> ';
-        }
-        if (canAdvance) actions += '<button class="btn btn-ghost btn-small" onclick="window.__advance(\'' + c.id + '\')">Simulate response</button> ';
-        if (c.stage === "attention") {
-          actions += '<select onchange="window.__route(\'' + c.id + '\', this.value)" style="width:auto;display:inline-block;">' +
-            '<option value="">Route to…</option>' +
-            brandsCache.filter(function (b) { return !b.house; }).map(function (b) { return '<option value="' + esc(b.name) + '">' + esc(b.name) + "</option>"; }).join("") +
-            "</select>";
-        }
-        if (c.routing_type === "external" && c.unit_price != null && !pendingSend) {
-          actions += '<button class="btn btn-ghost btn-small" onclick="window.__sendInvoice(' + jsAttr(c.id) + ')">' + (c.invoice_sent_at ? "Resend invoice" : "Send invoice") + '</button> ';
-        }
-        var invoiceNote = c.invoice_sent_at ? '<div class="cell-faint" style="margin-top:2px;">Invoice sent ' + fmtTime(c.invoice_sent_at) + '</div>' : "";
-        return "<tr><td class=\"mono cell-primary\">" + esc(c.id) + "</td><td>" + esc(c.customer_name || "—") + "</td><td>" + brandCell + "</td>" +
-          '<td class="cell-faint">' + esc(c.product_title) + "</td><td>" + photosCell + "</td><td><span class=\"chip " + chipClass + "\">" + label + "</span></td>" +
-          '<td class="cell-faint mono">' + fmtTime(c.updated_at) + "</td><td>" + actions + invoiceNote + "</td></tr>";
-      }).join("") || '<tr><td colspan="8" class="empty-note">No claims yet.</td></tr>';
+      renderClaims();
     });
   }
+
+  statusFilter.addEventListener("change", renderClaims);
+  claimSearch.addEventListener("input", renderClaims);
 
   window.__advance = function (id) {
     fetch("/api/ops/claims/" + encodeURIComponent(id) + "/advance", { method: "POST" })
@@ -258,6 +222,6 @@
       });
   };
 
-  Promise.all([loadBrands(), loadTemplate()]).then(loadClaims);
+  Promise.all([loadBrandsForDropdowns()]).then(loadClaims);
   setInterval(loadClaims, 15000);
 })();

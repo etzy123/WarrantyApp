@@ -40,7 +40,7 @@ SendGrid for the actual emails.
    - `SUPPORT_CC_EMAIL` — CC'd on every brand + customer email, defaults to
      `support@bisquegolf.com`.
    - `INTERNAL_NOTIFY_EMAIL` — where in-house and flagged-claim alerts go.
-   - `OPS_USERNAME` / `OPS_PASSWORD` — protects `/ops.html` and its API.
+   - `OPS_USERNAME` / `OPS_PASSWORD` — protects `/ops.html`, `/ops-brands.html`, and their API.
 4. Deploy. Railway runs `npm install` then `node src/index.js`
    automatically (see `railway.json`). The app creates its own tables and
    seeds the brand directory on first boot — no separate migration step.
@@ -52,26 +52,28 @@ SendGrid for the actual emails.
    once, approve the scopes, and the app stores its own access token in
    Postgres. Order lookup is live from that point on — no token to copy
    anywhere.
-7. Visit `https://<your-app>.up.railway.app/` for the customer form, and
-   `/ops.html` for the internal dashboard (you'll get a browser login
-   prompt for the ops username/password).
+7. Visit `https://<your-app>.up.railway.app/` for the customer form,
+   `/ops.html` for the claims queue, and `/ops-brands.html` for the brand
+   directory and email template (you'll get a browser login prompt for the
+   ops username/password on either ops page).
 
 ## Updating the brand directory
 
-Brand contact names/emails are editable straight from `/ops.html` — click
-"Edit" next to any external brand in the directory table. Units-sold and the
-brand list itself still come from the one-time seed in `src/migrate.js`;
-there's no live ShopifyQL query wired in for "most sold," so refresh that
-seed periodically (or wire up a scheduled job) rather than querying
-analytics on every page load.
+Brand contact names/emails are editable straight from `/ops-brands.html` —
+click "Edit" next to any external brand in the directory table. Units-sold
+and the brand list itself still come from the one-time seed in
+`src/migrate.js`; there's no live ShopifyQL query wired in for "most sold,"
+so refresh that seed periodically (or wire up a scheduled job) rather than
+querying analytics on every page load.
 
 ## Email template
 
 The wording sent to brands lives in the `email_template` table (one row),
-also editable from `/ops.html`. It supports `{{placeholders}}` — see the
-hint text on that page for the full list. Any photos a customer attached to
-the claim are automatically included as email attachments; no template
-changes needed for that.
+also editable from `/ops-brands.html`. It supports `{{placeholders}}` — see
+the hint text on that page for the full list. Any photos a customer attached
+to the claim, and a purchase invoice when the claim has one, are
+automatically included as email attachments; no template changes needed for
+that.
 
 ## Purchase invoices to brands
 

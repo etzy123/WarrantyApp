@@ -1,0 +1,77 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Bisque Golf — Brand Directory</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@500;600;700;800&family=Source+Sans+3:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+<div class="app">
+  <div class="toast-stack" id="toastStack" aria-live="polite"></div>
+
+  <header class="topbar">
+    <div class="brand">
+      <div class="brand-mark">
+        <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <path d="M6 21V4l12 4.5L11 12" stroke="#F3F8F1" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+      </div>
+      <div>
+        <div class="brand-name">Bisque Golf</div>
+        <div class="brand-sub">Warranty Claims &middot; Internal Ops</div>
+      </div>
+    </div>
+    <div style="display:flex;gap:8px;">
+      <a href="/ops.html" class="btn btn-ghost btn-small">&larr; Claims queue</a>
+      <a href="/" class="btn btn-ghost btn-small">Customer portal &rarr;</a>
+    </div>
+  </header>
+
+  <div class="intro">
+    <span class="eyebrow">Internal view</span>
+    <h1>Brand directory &amp; email template</h1>
+    <p>Who at each brand owns a claim, and what they're sent when one routes to them.</p>
+  </div>
+
+  <div class="section-head">
+    <div><h2>Brand contact directory</h2><p>Sorted by most sold &middot; click a contact to edit it</p></div>
+  </div>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>Brand</th><th class="num">Units sold, 12mo</th><th>Routes to</th><th>Contact</th><th></th></tr></thead>
+      <tbody id="brandTableBody"><tr><td colspan="5" class="empty-note">Loading…</td></tr></tbody>
+    </table>
+    <div class="table-foot-note">Edits save immediately and apply to the next claim routed to that brand.</div>
+  </div>
+
+  <div class="section-head">
+    <div><h2>Brand email template</h2><p>Sent to the brand's contact whenever a claim routes to them &middot; CC'd to support@bisquegolf.com</p></div>
+  </div>
+  <div class="card" id="templateCard">
+    <div class="field">
+      <label for="tplSubject">Subject</label>
+      <input id="tplSubject" type="text">
+    </div>
+    <div class="field">
+      <label for="tplBody">Body</label>
+      <textarea id="tplBody" style="min-height:180px;"></textarea>
+    </div>
+    <div class="card-hint" style="margin-bottom:14px;">
+      Placeholders you can use: <span class="mono">{{contact_role}}</span>, <span class="mono">{{product_title}}</span>,
+      <span class="mono">{{sku_suffix}}</span>, <span class="mono">{{order_number}}</span>, <span class="mono">{{issue}}</span>,
+      <span class="mono">{{claim_id}}</span>, <span class="mono">{{customer_name}}</span>. Any photos the customer attached,
+      and a purchase invoice when the claim has one, are sent along as email attachments automatically.
+    </div>
+    <button type="button" class="btn btn-primary" id="tplSaveBtn" style="width:auto;">Save template</button>
+  </div>
+</div>
+
+<div class="modal-backdrop" id="editModalBackdrop">
+  <div class="modal-card" id="editModalCard"></div>
+</div>
+
+<script src="/ops-brands.js"></script>
+</body>
+</html>

@@ -197,9 +197,12 @@ async function notifyCustomerSubmitted(claim) {
     `${claim.order_number ? ` (order #${claim.order_number})` : ""} and we're on it.\n\n` +
     `Reference: ${claim.id}\n\n` +
     `We'll email you again as soon as there's an update — no need to reply to this one.\n\n— Bisque Golf`;
+  // Not CC'd to SUPPORT_CC on purpose — notifyInternalNewClaim() already
+  // tells support about this exact claim the moment it's created, so CC'ing
+  // this one too would mean two "new claim" emails landing in the same
+  // inbox for the same event.
   return sendEmail({
     to: claim.customer_email,
-    cc: SUPPORT_CC,
     subject: `We've got your claim — ${claim.id}`,
     text: body,
   });

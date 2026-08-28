@@ -18,6 +18,9 @@ app.use("/api", apiRoutes);
 app.get("/ops.html", requireOpsAuth, (req, res) => {
   res.sendFile(path.join(__dirname, "..", "public", "ops.html"));
 });
+app.get("/ops-brands.html", requireOpsAuth, (req, res) => {
+  res.sendFile(path.join(__dirname, "..", "public", "ops-brands.html"));
+});
 
 app.use(express.static(path.join(__dirname, "..", "public")));
 
