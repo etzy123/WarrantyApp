@@ -183,7 +183,12 @@ async function notifyInternalNewClaim(claim) {
     `Reported issue: "${claim.issue}"\n\n` +
     `View it in the ops dashboard for full details.`;
   return sendEmail({
-    to: SUPPORT_CC,
+    // Goes to INTERNAL_ADDRESS (jelle@bisquegolf.com) instead of SUPPORT_CC
+    // on purpose — SUPPORT_CC alone is support@bisquegolf.com mailing
+    // itself, which Gmail files without an INBOX label and so it's easy to
+    // miss entirely. Falls back to SUPPORT_CC only if INTERNAL_NOTIFY_EMAIL
+    // is ever unset, so this alert never silently goes nowhere.
+    to: INTERNAL_ADDRESS || SUPPORT_CC,
     subject: `New claim ${claim.id} — ${claim.product_title}`,
     text: body,
   });
