@@ -182,17 +182,12 @@ async function notifyInternalNewClaim(claim) {
     `Routing: ${routingLabel}\n\n` +
     `Reported issue: "${claim.issue}"\n\n` +
     `View it in the ops dashboard for full details.`;
-    return sendEmail({
-     to: SUPPORT_CC,
-+    // Also CC INTERNAL_ADDRESS (jelle@bisquegolf.com) when set, so this
-+    // guaranteed "a claim came in" alert reaches a real inbox directly —
-+    // SUPPORT_CC alone is support@bisquegolf.com mailing itself, which
-+    // Gmail files without an INBOX label and so it's easy to miss entirely.
-+    cc: INTERNAL_ADDRESS || undefined,
-     subject: `New claim ${claim.id} — ${claim.product_title}`,
-     text: body,
-   });
- }
+  return sendEmail({
+    to: SUPPORT_CC,
+    subject: `New claim ${claim.id} — ${claim.product_title}`,
+    text: body,
+  });
+}
 
 async function notifyCustomerSubmitted(claim) {
   if (!claim.customer_email) return { skipped: true, reason: "no customer email on file" };
